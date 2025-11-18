@@ -1,14 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import {
-  Upload,
-  Loader,
-  CheckCircle,
-  FileText,
-  Trash2,
-  BarChart3,
-} from "lucide-react";
+import { Upload, CheckCircle, FileText, Trash2, BarChart3 } from "lucide-react";
 import { personaAPI, uploadAPI, getUserId } from "@/lib/api";
 import type { Persona } from "@/lib/types";
 
@@ -30,17 +23,33 @@ export default function PersonaTraining() {
 
   useEffect(() => {
     loadPersonas();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadPersonas = async () => {
     try {
+      console.log("Loading personas for training...");
       const data = await personaAPI.list();
+      console.log("Personas loaded for training:", data);
       setPersonas(data);
       if (data.length > 0 && !selectedPersona) {
         setSelectedPersona(data[0].id || "");
       }
     } catch (err) {
       console.error("Failed to load personas:", err);
+      let errorMessage = "Failed to load personas";
+      if (err instanceof Error) {
+        if (
+          err.message.includes("Failed to fetch") ||
+          err.message.includes("Network")
+        ) {
+          errorMessage =
+            "Cannot connect to server. Please ensure the backend is running.";
+        } else {
+          errorMessage = err.message;
+        }
+      }
+      setError(errorMessage);
     }
   };
 
@@ -89,7 +98,13 @@ export default function PersonaTraining() {
         }
       }, 300);
 
+      console.log("Uploading file:", {
+        fileName: file.name,
+        userId,
+        personaId: selectedPersona,
+      });
       await uploadAPI.upload(file, userId, selectedPersona);
+      console.log("File uploaded successfully:", file.name);
 
       clearInterval(progressInterval);
       setFiles((prev) =>
@@ -100,13 +115,31 @@ export default function PersonaTraining() {
         )
       );
     } catch (err) {
+      console.error("File upload failed:", err);
+      let errorMessage = "Upload failed";
+      if (err instanceof Error) {
+        if (
+          err.message.includes("Failed to fetch") ||
+          err.message.includes("Network")
+        ) {
+          errorMessage =
+            "Cannot connect to server. Please ensure the backend is running.";
+        } else if (
+          err.message.includes("401") ||
+          err.message.includes("Unauthorized")
+        ) {
+          errorMessage = "Authentication failed. Please log in again.";
+        } else {
+          errorMessage = err.message;
+        }
+      }
       setFiles((prev) =>
         prev.map((f) =>
           f.id === fileId
             ? {
                 ...f,
                 status: "error" as const,
-                error: err instanceof Error ? err.message : "Upload failed",
+                error: errorMessage,
               }
             : f
         )
@@ -125,16 +158,33 @@ export default function PersonaTraining() {
     }
 
     if (e.dataTransfer.files) {
-      const fileList = Array.from(e.dataTransfer.files).filter(
+      const fileList = Array.from(e.dataTransfer.files);
+
+      // Validate file types
+      const pdfFiles = fileList.filter(
         (file) => file.type === "application/pdf"
       );
 
-      if (fileList.length === 0) {
+      if (pdfFiles.length === 0) {
         setError("Please upload PDF files only");
         return;
       }
 
-      const newFiles: UploadedFile[] = fileList.map((file, idx) => ({
+      // Validate file sizes (50MB limit)
+      const oversizedFiles = pdfFiles.filter(
+        (file) => file.size > 50 * 1024 * 1024
+      );
+
+      if (oversizedFiles.length > 0) {
+        setError(
+          `Some files exceed 50MB limit: ${oversizedFiles
+            .map((f) => f.name)
+            .join(", ")}`
+        );
+        return;
+      }
+
+      const newFiles: UploadedFile[] = pdfFiles.map((file, idx) => ({
         id: `file-${Date.now()}-${idx}`,
         name: file.name,
         size: file.size,
@@ -145,7 +195,7 @@ export default function PersonaTraining() {
       setFiles((prev) => [...prev, ...newFiles]);
 
       // Process each file
-      fileList.forEach((file, idx) => {
+      pdfFiles.forEach((file, idx) => {
         processFile(file, newFiles[idx].id);
       });
     }
@@ -154,16 +204,31 @@ export default function PersonaTraining() {
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
 
-    const fileList = Array.from(e.target.files).filter(
-      (file) => file.type === "application/pdf"
-    );
+    const fileList = Array.from(e.target.files);
 
-    if (fileList.length === 0) {
+    // Validate file types
+    const pdfFiles = fileList.filter((file) => file.type === "application/pdf");
+
+    if (pdfFiles.length === 0) {
       setError("Please upload PDF files only");
       return;
     }
 
-    const newFiles: UploadedFile[] = fileList.map((file, idx) => ({
+    // Validate file sizes (50MB limit)
+    const oversizedFiles = pdfFiles.filter(
+      (file) => file.size > 50 * 1024 * 1024
+    );
+
+    if (oversizedFiles.length > 0) {
+      setError(
+        `Some files exceed 50MB limit: ${oversizedFiles
+          .map((f) => f.name)
+          .join(", ")}`
+      );
+      return;
+    }
+
+    const newFiles: UploadedFile[] = pdfFiles.map((file, idx) => ({
       id: `file-${Date.now()}-${idx}`,
       name: file.name,
       size: file.size,
@@ -173,9 +238,12 @@ export default function PersonaTraining() {
 
     setFiles((prev) => [...prev, ...newFiles]);
 
-    fileList.forEach((file, idx) => {
+    pdfFiles.forEach((file, idx) => {
       processFile(file, newFiles[idx].id);
     });
+
+    // Reset file input
+    e.target.value = "";
   };
 
   const removeFile = (id: string) => {
@@ -247,7 +315,7 @@ export default function PersonaTraining() {
               disabled={!selectedPersona}
             />
             <div className="text-center space-y-4">
-              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-purple-500/20 to-blue-500/20 flex items-center justify-center mx-auto">
+              <div className="w-16 h-16 rounded-full bg-linear-to-br from-purple-500/20 to-blue-500/20 flex items-center justify-center mx-auto">
                 <Upload className="w-8 h-8 text-accent" />
               </div>
               <div>
@@ -275,7 +343,7 @@ export default function PersonaTraining() {
                 <div key={file.id} className="glassmorphic p-4 space-y-3">
                   <div className="flex items-start justify-between">
                     <div className="flex items-start gap-3 flex-1">
-                      <FileText className="w-5 h-5 text-accent flex-shrink-0 mt-1" />
+                      <FileText className="w-5 h-5 text-accent shrink-0 mt-1" />
                       <div className="flex-1 min-w-0">
                         <p className="font-semibold text-white truncate">
                           {file.name}
@@ -297,11 +365,11 @@ export default function PersonaTraining() {
                     <div className="flex items-center justify-between">
                       <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden">
                         <div
-                          className="h-full bg-gradient-to-r from-purple-600 to-blue-600 transition-all duration-300"
+                          className="h-full bg-linear-to-r from-purple-600 to-blue-600 transition-all duration-300"
                           style={{ width: `${file.progress}%` }}
                         />
                       </div>
-                      <span className="text-xs text-muted-foreground ml-2 flex-shrink-0">
+                      <span className="text-xs text-muted-foreground ml-2 shrink-0">
                         {Math.round(file.progress)}%
                       </span>
                     </div>
@@ -328,7 +396,7 @@ export default function PersonaTraining() {
         {/* Persona Info */}
         <div className="space-y-4">
           <div className="glassmorphic p-6 space-y-4">
-            <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center">
+            <div className="w-12 h-12 rounded-lg bg-linear-to-br from-purple-500 to-blue-500 flex items-center justify-center">
               <BarChart3 className="w-6 h-6 text-white" />
             </div>
             <div>

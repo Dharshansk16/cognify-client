@@ -64,22 +64,66 @@ async function apiCall<T>(
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    ...options,
-    headers,
-  });
+  // Merge with any existing headers from options
+  const mergedHeaders = {
+    ...headers,
+    ...(options.headers as Record<string, string>),
+  };
 
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(error || `HTTP error! status: ${response.status}`);
-  }
+  console.log(
+    `API Call: ${options.method || "GET"} ${API_BASE_URL}${endpoint}`
+  );
 
-  // Handle 204 No Content
-  if (response.status === 204) {
+  try {
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      ...options,
+      headers: mergedHeaders,
+    });
+
+    console.log(`Response status: ${response.status}`);
+
+    if (!response.ok) {
+      let errorMessage = `HTTP error! status: ${response.status}`;
+      try {
+        const errorText = await response.text();
+        if (errorText) {
+          try {
+            // Try to parse as JSON first
+            const errorJson = JSON.parse(errorText);
+            errorMessage = errorJson.message || errorText;
+          } catch {
+            // If not JSON, use the text as is
+            errorMessage = errorText;
+          }
+        }
+      } catch {
+        // If we can't read the error text, use the default message
+      }
+      console.error(`API Error: ${errorMessage}`);
+      throw new Error(errorMessage);
+    }
+
+    // Handle 204 No Content
+    if (response.status === 204) {
+      return {} as T;
+    }
+
+    // Check if response has content before parsing JSON
+    const contentType = response.headers.get("content-type");
+    if (contentType && contentType.includes("application/json")) {
+      const text = await response.text();
+      return text ? JSON.parse(text) : ({} as T);
+    }
+
+    // For non-JSON responses, return empty object
     return {} as T;
+  } catch (error) {
+    console.error(`API Call Failed: ${error}`);
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error("Network error occurred");
   }
-
-  return response.json();
 }
 
 // Auth APIs
@@ -178,23 +222,58 @@ export const uploadAPI = {
     formData.append("userId", userId);
     formData.append("personaId", personaId);
 
-    const headers: HeadersInit = {};
+    const headers: Record<string, string> = {};
     if (token) {
       headers["Authorization"] = `Bearer ${token}`;
     }
 
-    const response = await fetch(`${API_BASE_URL}/api/uploads`, {
-      method: "POST",
-      headers,
-      body: formData,
-    });
+    try {
+      console.log(`Upload API Call: POST ${API_BASE_URL}/api/uploads`);
+      const response = await fetch(`${API_BASE_URL}/api/uploads`, {
+        method: "POST",
+        headers,
+        body: formData,
+      });
 
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(error || `HTTP error! status: ${response.status}`);
+      console.log(`Upload response status: ${response.status}`);
+
+      if (!response.ok) {
+        let errorMessage = `HTTP error! status: ${response.status}`;
+        try {
+          const errorText = await response.text();
+          if (errorText) {
+            try {
+              // Try to parse as JSON first
+              const errorJson = JSON.parse(errorText);
+              errorMessage = errorJson.message || errorText;
+            } catch {
+              // If not JSON, use the text as is
+              errorMessage = errorText;
+            }
+          }
+        } catch {
+          // If we can't read the error text, use the default message
+        }
+        console.error(`Upload error: ${errorMessage}`);
+        throw new Error(errorMessage);
+      }
+
+      // Check if response has content before parsing JSON
+      const contentType = response.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        const text = await response.text();
+        return text ? JSON.parse(text) : ({} as UploadResponse);
+      }
+
+      // For non-JSON responses, throw an error
+      throw new Error("Invalid response format from server");
+    } catch (error) {
+      console.error(`Upload failed:`, error);
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error("Upload failed: Network error occurred");
     }
-
-    return response.json();
   },
 
   list: async (personaId?: string): Promise<UploadResponse[]> => {

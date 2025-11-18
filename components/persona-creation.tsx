@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Upload, Plus, ArrowRight, Sparkles, Trash2 } from "lucide-react";
+import { Sparkles, Trash2 } from "lucide-react";
 import { personaAPI } from "@/lib/api";
 import type { Persona } from "@/lib/types";
 
@@ -11,6 +11,7 @@ export default function PersonaCreation() {
     description: "",
   });
   const [loading, setLoading] = useState(false);
+  const [loadingPersonas, setLoadingPersonas] = useState(true);
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -20,12 +21,37 @@ export default function PersonaCreation() {
     loadPersonas();
   }, []);
 
+  // Auto-dismiss success and error messages after 5 seconds
+  useEffect(() => {
+    if (success) {
+      const timer = setTimeout(() => setSuccess(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [success]);
+
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => setError(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [error]);
+
   const loadPersonas = async () => {
+    setLoadingPersonas(true);
     try {
+      console.log("Loading personas...");
       const data = await personaAPI.list();
+      console.log("Personas loaded:", data);
       setPersonas(data);
     } catch (err) {
       console.error("Failed to load personas:", err);
+      if (err instanceof Error && err.message.includes("Failed to fetch")) {
+        setError(
+          "Cannot connect to server. Please ensure the backend is running."
+        );
+      }
+    } finally {
+      setLoadingPersonas(false);
     }
   };
 
@@ -35,33 +61,79 @@ export default function PersonaCreation() {
     setError(null);
     setSuccess(null);
 
+    // Validation
+    if (formData.name.trim().length < 2) {
+      setError("Persona name must be at least 2 characters");
+      setLoading(false);
+      return;
+    }
+
+    if (formData.description.trim().length < 10) {
+      setError("Description must be at least 10 characters");
+      setLoading(false);
+      return;
+    }
+
     try {
+      console.log("Creating persona...");
       const newPersona: Persona = {
-        name: formData.name,
-        description: formData.description,
+        name: formData.name.trim(),
+        description: formData.description.trim(),
       };
 
       await personaAPI.create(newPersona);
+      console.log("Persona created successfully");
       setSuccess("Persona created successfully!");
       setFormData({ name: "", description: "" });
 
       // Reload personas
       await loadPersonas();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create persona");
+      console.error("Failed to create persona:", err);
+      let errorMessage = "Failed to create persona";
+      if (err instanceof Error) {
+        if (
+          err.message.includes("Failed to fetch") ||
+          err.message.includes("Network")
+        ) {
+          errorMessage =
+            "Cannot connect to server. Please ensure the backend is running.";
+        } else {
+          errorMessage = err.message;
+        }
+      }
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this persona?")) return;
+    if (!window.confirm("Are you sure you want to delete this persona?")) {
+      return;
+    }
 
     try {
+      console.log("Deleting persona:", id);
       await personaAPI.delete(id);
+      console.log("Persona deleted successfully");
+      setSuccess("Persona deleted successfully!");
       await loadPersonas();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete persona");
+      console.error("Failed to delete persona:", err);
+      let errorMessage = "Failed to delete persona";
+      if (err instanceof Error) {
+        if (
+          err.message.includes("Failed to fetch") ||
+          err.message.includes("Network")
+        ) {
+          errorMessage =
+            "Cannot connect to server. Please ensure the backend is running.";
+        } else {
+          errorMessage = err.message;
+        }
+      }
+      setError(errorMessage);
     }
   };
 
@@ -128,7 +200,7 @@ export default function PersonaCreation() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 disabled:from-purple-600/50 disabled:to-blue-600/50 text-white font-semibold py-3 rounded-lg transition-all duration-300 flex items-center justify-center gap-2"
+              className="w-full bg-linear-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 disabled:from-purple-600/50 disabled:to-blue-600/50 text-white font-semibold py-3 rounded-lg transition-all duration-300 flex items-center justify-center gap-2"
             >
               {loading ? (
                 <>
@@ -148,7 +220,12 @@ export default function PersonaCreation() {
         {/* Sidebar - My Personas */}
         <div className="space-y-4">
           <h3 className="text-lg font-semibold text-white mb-4">My Personas</h3>
-          {personas.length === 0 ? (
+          {loadingPersonas ? (
+            <div className="glassmorphic p-8 text-center">
+              <div className="w-8 h-8 rounded-full border-2 border-accent/30 border-t-accent animate-spin mx-auto mb-2" />
+              <p className="text-sm text-muted-foreground">Loading...</p>
+            </div>
+          ) : personas.length === 0 ? (
             <div className="glassmorphic p-4 text-center">
               <p className="text-sm text-muted-foreground">
                 No personas yet. Create your first one!

@@ -19,17 +19,36 @@ export default function AuthForm({ onSuccess }: AuthFormProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const validateEmail = (email: string): boolean => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
+    // Trim whitespace
+    const trimmedEmail = email.trim();
+    const trimmedName = name.trim();
+
     // Validation
+    if (!validateEmail(trimmedEmail)) {
+      setError("Please enter a valid email address");
+      return;
+    }
+
+    if (!isLogin && trimmedName.length < 2) {
+      setError("Name must be at least 2 characters");
+      return;
+    }
+
     if (!isLogin && password !== confirmPassword) {
       setError("Passwords do not match");
       return;
     }
 
-    if (!isLogin && password.length < 6) {
+    if (password.length < 6) {
       setError("Password must be at least 6 characters");
       return;
     }
@@ -37,23 +56,70 @@ export default function AuthForm({ onSuccess }: AuthFormProps) {
     setLoading(true);
 
     try {
+      console.log(`Attempting ${isLogin ? "login" : "signup"}...`);
       if (isLogin) {
-        const loginData: AuthRequest = { email, password };
+        const loginData: AuthRequest = { email: email.trim(), password };
+        console.log("Sending login request with email:", email.trim());
         const response = await authAPI.login(loginData);
+        console.log("Login response received:", {
+          hasToken: !!response.token,
+          hasUserId: !!response.userId,
+          hasEmail: !!response.email,
+          hasName: !!response.name,
+        });
         setToken(response.token);
         if (response.userId) setUserId(response.userId);
         if (response.email) setUserEmail(response.email);
+        console.log("Tokens set successfully, calling onSuccess...");
         onSuccess();
       } else {
-        const signupData: SignupRequest = { name, email, password };
+        const signupData: SignupRequest = {
+          name: name.trim(),
+          email: email.trim(),
+          password,
+        };
+        console.log("Sending signup request with:", {
+          name: name.trim(),
+          email: email.trim(),
+        });
         const response = await authAPI.signup(signupData);
+        console.log("Signup response received:", {
+          hasToken: !!response.token,
+          hasUserId: !!response.userId,
+          hasEmail: !!response.email,
+          hasName: !!response.name,
+        });
         setToken(response.token);
         if (response.userId) setUserId(response.userId);
         if (response.email) setUserEmail(response.email);
+        console.log("Tokens set successfully, calling onSuccess...");
         onSuccess();
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Authentication failed");
+      console.error("Authentication error:", err);
+      let errorMessage = "Authentication failed";
+
+      if (err instanceof Error) {
+        // Extract meaningful error message
+        if (err.message.includes("User not found")) {
+          errorMessage = "User not found. Please check your email.";
+        } else if (err.message.includes("Incorrect password")) {
+          errorMessage = "Incorrect password. Please try again.";
+        } else if (err.message.includes("Email already registered")) {
+          errorMessage =
+            "This email is already registered. Please login instead.";
+        } else if (
+          err.message.includes("Failed to fetch") ||
+          err.message.includes("Network")
+        ) {
+          errorMessage =
+            "Cannot connect to server. Please ensure the backend is running on http://localhost:8080";
+        } else {
+          errorMessage = err.message;
+        }
+      }
+
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -89,7 +155,7 @@ export default function AuthForm({ onSuccess }: AuthFormProps) {
                 "Chat Naturally",
               ].map((feature, i) => (
                 <div key={i} className="flex items-start gap-3 group">
-                  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center flex-shrink-0 group-hover:shadow-lg group-hover:shadow-purple-500/50 transition-all duration-300">
+                  <div className="w-10 h-10 rounded-lg bg-linear-to-br from-purple-500 to-blue-500 flex items-center justify-center shrink-0 group-hover:shadow-lg group-hover:shadow-purple-500/50 transition-all duration-300">
                     <span className="text-white font-bold text-sm">
                       {i + 1}
                     </span>
@@ -152,7 +218,7 @@ export default function AuthForm({ onSuccess }: AuthFormProps) {
                   <div className="w-full border-t border-white/10" />
                 </div>
                 <div className="relative flex justify-center text-sm">
-                  <span className="px-2 bg-gradient-to-b from-[oklch(0.12_0.02_280)] to-[oklch(0.12_0.02_280)] text-muted-foreground">
+                  <span className="px-2 bg-linear-to-b from-[oklch(0.12_0.02_280)] to-[oklch(0.12_0.02_280)] text-muted-foreground">
                     Or continue with email
                   </span>
                 </div>
@@ -250,7 +316,7 @@ export default function AuthForm({ onSuccess }: AuthFormProps) {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 disabled:from-purple-600/50 disabled:to-blue-600/50 text-white font-semibold py-3 rounded-lg transition-all duration-300 flex items-center justify-center gap-2 group"
+                  className="w-full bg-linear-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 disabled:from-purple-600/50 disabled:to-blue-600/50 text-white font-semibold py-3 rounded-lg transition-all duration-300 flex items-center justify-center gap-2 group"
                 >
                   {loading ? (
                     <>

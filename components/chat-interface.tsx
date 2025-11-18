@@ -37,7 +37,9 @@ export default function ChatInterface() {
 
   const loadPersonas = async () => {
     try {
+      console.log("Loading personas for chat...");
       const data = await personaAPI.list();
+      console.log("Personas loaded for chat:", data);
       setPersonas(data);
       if (data.length > 0) {
         // Add a welcome message from the first persona
@@ -54,8 +56,20 @@ export default function ChatInterface() {
         ]);
       }
     } catch (err) {
-      setError("Failed to load personas");
-      console.error(err);
+      console.error("Failed to load personas:", err);
+      let errorMessage = "Failed to load personas";
+      if (err instanceof Error) {
+        if (
+          err.message.includes("Failed to fetch") ||
+          err.message.includes("Network")
+        ) {
+          errorMessage =
+            "Cannot connect to server. Please ensure the backend is running.";
+        } else {
+          errorMessage = err.message;
+        }
+      }
+      setError(errorMessage);
     }
   };
 
@@ -84,10 +98,10 @@ export default function ChatInterface() {
         },
       ]);
     }
-  }, [selectedPersonaIndex]);
+  }, [selectedPersonaIndex, personas]);
 
   const handleSend = async () => {
-    if (!input.trim() || !personas[selectedPersonaIndex]?.id) return;
+    if (!input.trim() || !personas[selectedPersonaIndex]?.id || loading) return;
 
     const userMessage: Message = {
       id: `msg-${Date.now()}`,
@@ -103,11 +117,19 @@ export default function ChatInterface() {
     setError(null);
 
     try {
+      console.log("Sending chat message:", {
+        personaId: personas[selectedPersonaIndex].id,
+        conversationId,
+        message: input,
+      });
+
       const response = await conversationAPI.chat({
         personaId: personas[selectedPersonaIndex].id!,
         conversationId,
         message: input,
       });
+
+      console.log("Chat response received:", response);
 
       // Update conversation ID if it's a new conversation
       if (!conversationId) {
@@ -132,7 +154,25 @@ export default function ChatInterface() {
 
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to send message");
+      console.error("Failed to send message:", err);
+      let errorMessage = "Failed to send message";
+      if (err instanceof Error) {
+        if (
+          err.message.includes("Failed to fetch") ||
+          err.message.includes("Network")
+        ) {
+          errorMessage =
+            "Cannot connect to server. Please ensure the backend is running.";
+        } else if (
+          err.message.includes("401") ||
+          err.message.includes("Unauthorized")
+        ) {
+          errorMessage = "Authentication failed. Please log in again.";
+        } else {
+          errorMessage = err.message;
+        }
+      }
+      setError(errorMessage);
       // Mark user message as failed
       setMessages((prev) => prev.filter((m) => m.id !== userMessage.id));
     } finally {
@@ -164,45 +204,54 @@ export default function ChatInterface() {
     return (
       <div className="h-[calc(100vh-120px)] flex items-center justify-center">
         <div className="text-center space-y-4">
+          <MessageCircle className="w-16 h-16 text-muted-foreground mx-auto" />
           <p className="text-white text-lg">No personas available</p>
           <p className="text-muted-foreground">
             Create a persona first to start chatting
           </p>
+          <button
+            onClick={loadPersonas}
+            className="px-4 py-2 bg-linear-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-lg transition-all"
+          >
+            Retry Loading
+          </button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-[calc(100vh-120px)] flex gap-6">
+    <div className="h-[calc(100vh-120px)] flex flex-col md:flex-row gap-6">
       {/* Personas Sidebar */}
-      <div className="w-64 flex-shrink-0 space-y-3">
+      <div className="w-full md:w-64 shrink-0 space-y-3 max-h-48 md:max-h-full overflow-y-auto">
         <h3 className="font-semibold text-white px-2">Available Personas</h3>
-        {personas.map((persona, idx) => (
-          <button
-            key={persona.id}
-            onClick={() => setSelectedPersonaIndex(idx)}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 ${
-              selectedPersonaIndex === idx
-                ? "glassmorphic border border-accent/50 bg-white/10"
-                : "glassmorphic hover:bg-white/10"
-            }`}
-          >
-            <div
-              className={`w-10 h-10 rounded-lg bg-gradient-to-br ${getPersonaColor(
-                idx
-              )} flex items-center justify-center text-white font-bold text-sm flex-shrink-0`}
+        <div className="flex md:flex-col gap-2 overflow-x-auto md:overflow-x-visible pb-2 md:pb-0">
+          {personas.map((persona, idx) => (
+            <button
+              key={persona.id}
+              onClick={() => setSelectedPersonaIndex(idx)}
+              className={`shrink-0 md:w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 ${
+                selectedPersonaIndex === idx
+                  ? "glassmorphic border border-accent/50 bg-white/10"
+                  : "glassmorphic hover:bg-white/10"
+              }`}
             >
-              {getPersonaInitials(persona.name)}
-            </div>
-            <div className="text-left min-w-0 flex-1">
-              <p className="font-semibold text-white text-sm truncate">
-                {persona.name}
-              </p>
-              <p className="text-xs text-green-400">Ready</p>
-            </div>
-          </button>
-        ))}
+              <div
+                className={`w-10 h-10 rounded-lg bg-linear-to-br ${getPersonaColor(
+                  idx
+                )} flex items-center justify-center text-white font-bold text-sm shrink-0`}
+              >
+                {getPersonaInitials(persona.name)}
+              </div>
+              <div className="text-left min-w-0 flex-1 hidden md:block">
+                <p className="font-semibold text-white text-sm truncate">
+                  {persona.name}
+                </p>
+                <p className="text-xs text-green-400">Ready</p>
+              </div>
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Chat Area */}
@@ -211,7 +260,7 @@ export default function ChatInterface() {
         <div className="p-6 border-b border-white/10">
           <div className="flex items-center gap-3">
             <div
-              className={`w-10 h-10 rounded-lg bg-gradient-to-br ${getPersonaColor(
+              className={`w-10 h-10 rounded-lg bg-linear-to-br ${getPersonaColor(
                 selectedPersonaIndex
               )} flex items-center justify-center text-white font-bold`}
             >
@@ -251,9 +300,9 @@ export default function ChatInterface() {
               >
                 {message.role === "assistant" && (
                   <div
-                    className={`w-8 h-8 rounded-lg bg-gradient-to-br ${getPersonaColor(
+                    className={`w-8 h-8 rounded-lg bg-linear-to-br ${getPersonaColor(
                       selectedPersonaIndex
-                    )} flex items-center justify-center text-white font-bold text-xs flex-shrink-0`}
+                    )} flex items-center justify-center text-white font-bold text-xs shrink-0`}
                   >
                     {getPersonaInitials(personas[selectedPersonaIndex].name)}
                   </div>
@@ -261,7 +310,7 @@ export default function ChatInterface() {
                 <div
                   className={`px-4 py-3 rounded-2xl ${
                     message.role === "user"
-                      ? "bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-br-none"
+                      ? "bg-linear-to-r from-purple-600 to-blue-600 text-white rounded-br-none"
                       : "bg-white/10 text-white rounded-bl-none"
                   }`}
                 >
@@ -298,9 +347,9 @@ export default function ChatInterface() {
             <div className="flex justify-start animate-fade-in">
               <div className="flex gap-3">
                 <div
-                  className={`w-8 h-8 rounded-lg bg-gradient-to-br ${getPersonaColor(
+                  className={`w-8 h-8 rounded-lg bg-linear-to-br ${getPersonaColor(
                     selectedPersonaIndex
-                  )} flex items-center justify-center flex-shrink-0`}
+                  )} flex items-center justify-center shrink-0`}
                 >
                   <MessageCircle className="w-4 h-4 text-white" />
                 </div>
@@ -333,16 +382,22 @@ export default function ChatInterface() {
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyPress={(e) =>
-                e.key === "Enter" && !e.shiftKey && handleSend()
-              }
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSend();
+                }
+                if (e.key === "Escape") {
+                  setError(null);
+                }
+              }}
               placeholder="Type your message..."
               className="flex-1 bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white placeholder:text-muted-foreground focus:outline-none focus:border-accent/50 focus:ring-2 focus:ring-accent/20 transition-all duration-300"
             />
             <button
               onClick={handleSend}
               disabled={!input.trim() || loading}
-              className="p-3 rounded-lg bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 disabled:opacity-50 text-white transition-all"
+              className="p-3 rounded-lg bg-linear-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 disabled:opacity-50 text-white transition-all"
             >
               <Send className="w-5 h-5" />
             </button>

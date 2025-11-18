@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Menu,
   LogOut,
@@ -10,7 +10,7 @@ import {
   FileText,
   MessageSquare,
 } from "lucide-react";
-import { removeToken } from "@/lib/api";
+import { removeToken, getUserEmail } from "@/lib/api";
 import PersonaCreation from "./persona-creation";
 import PersonaTraining from "./persona-training";
 import ChatInterface from "./chat-interface";
@@ -19,11 +19,17 @@ interface DashboardProps {
   onLogout: () => void;
 }
 
-type Page = "home" | "personas" | "training" | "chat";
+type Page = "home" | "personas" | "training" | "chat" | "settings";
 
 export default function Dashboard({ onLogout }: DashboardProps) {
   const [currentPage, setCurrentPage] = useState<Page>("personas");
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+
+  useEffect(() => {
+    const email = getUserEmail();
+    setUserEmail(email);
+  }, []);
 
   const handleLogout = () => {
     removeToken();
@@ -45,6 +51,45 @@ export default function Dashboard({ onLogout }: DashboardProps) {
         return <PersonaTraining />;
       case "chat":
         return <ChatInterface />;
+      case "settings":
+        return (
+          <div className="space-y-8">
+            <div className="space-y-2">
+              <h1 className="text-4xl font-bold text-white text-balance">
+                Settings
+              </h1>
+              <p className="text-muted-foreground text-lg">
+                Manage your account and preferences
+              </p>
+            </div>
+            <div className="glassmorphic p-8 space-y-6">
+              <div className="space-y-4">
+                <h3 className="font-semibold text-white">
+                  Account Information
+                </h3>
+                <div className="space-y-2">
+                  <label className="text-sm text-muted-foreground">Email</label>
+                  <p className="text-white">{userEmail || "Not available"}</p>
+                </div>
+              </div>
+              <div className="pt-6 border-t border-white/10">
+                <h3 className="font-semibold text-white mb-4">Preferences</h3>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Theme</span>
+                    <span className="text-sm text-white">Dark (Default)</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">
+                      Language
+                    </span>
+                    <span className="text-sm text-white">English</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
       default:
         return (
           <div className="space-y-8">
@@ -79,7 +124,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                   Train with Data
                 </h3>
                 <p className="text-sm text-muted-foreground">
-                  Upload documents to enhance your persona's knowledge
+                  Upload documents to enhance your persona&apos;s knowledge
                 </p>
               </button>
               <button
@@ -110,7 +155,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
       >
         <div className="p-6 border-b border-white/10">
           <div className="flex items-center gap-2">
-            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-lg bg-linear-to-br from-purple-500 to-blue-500 flex items-center justify-center">
               <Zap className="w-6 h-6 text-white" />
             </div>
             {sidebarOpen && (
@@ -127,15 +172,17 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                 key={item.id}
                 onClick={() => {
                   setCurrentPage(item.id as Page);
-                  setSidebarOpen(false);
+                  if (window.innerWidth < 768) {
+                    setSidebarOpen(false);
+                  }
                 }}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 ${
                   currentPage === item.id
-                    ? "bg-gradient-to-r from-purple-600/50 to-blue-600/50 text-white border border-accent/50"
+                    ? "bg-linear-to-r from-purple-600/50 to-blue-600/50 text-white border border-accent/50"
                     : "text-muted-foreground hover:text-white hover:bg-white/5"
                 }`}
               >
-                <Icon className="w-5 h-5 flex-shrink-0" />
+                <Icon className="w-5 h-5 shrink-0" />
                 {sidebarOpen && (
                   <span className="text-sm font-medium">{item.label}</span>
                 )}
@@ -145,8 +192,15 @@ export default function Dashboard({ onLogout }: DashboardProps) {
         </nav>
 
         <div className="absolute bottom-0 left-0 right-0 p-4 space-y-2 border-t border-white/10">
-          <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-muted-foreground hover:text-white hover:bg-white/5 transition-all duration-200">
-            <Settings className="w-5 h-5 flex-shrink-0" />
+          <button
+            onClick={() => setCurrentPage("settings")}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 ${
+              currentPage === "settings"
+                ? "bg-linear-to-r from-purple-600/50 to-blue-600/50 text-white border border-accent/50"
+                : "text-muted-foreground hover:text-white hover:bg-white/5"
+            }`}
+          >
+            <Settings className="w-5 h-5 shrink-0" />
             {sidebarOpen && (
               <span className="text-sm font-medium">Settings</span>
             )}
@@ -155,7 +209,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
             onClick={handleLogout}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-all duration-200"
           >
-            <LogOut className="w-5 h-5 flex-shrink-0" />
+            <LogOut className="w-5 h-5 shrink-0" />
             {sidebarOpen && <span className="text-sm font-medium">Logout</span>}
           </button>
         </div>
@@ -173,8 +227,16 @@ export default function Dashboard({ onLogout }: DashboardProps) {
           </button>
           <div className="flex-1" />
           <div className="flex items-center gap-4">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-white font-semibold cursor-pointer hover:shadow-lg hover:shadow-purple-500/50 transition-all">
-              U
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-muted-foreground hidden md:block">
+                {userEmail || "User"}
+              </span>
+              <div
+                className="w-10 h-10 rounded-full bg-linear-to-br from-purple-500 to-blue-500 flex items-center justify-center text-white font-semibold cursor-pointer hover:shadow-lg hover:shadow-purple-500/50 transition-all"
+                title={userEmail || "User"}
+              >
+                {userEmail ? userEmail[0].toUpperCase() : "U"}
+              </div>
             </div>
           </div>
         </div>
